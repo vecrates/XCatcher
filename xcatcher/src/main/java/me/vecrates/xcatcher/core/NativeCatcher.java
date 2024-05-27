@@ -50,7 +50,6 @@ public class NativeCatcher {
                 + "\ncrash thread=" + crashThreadName
                 + "\n#####################", e);
 
-        //todo 不退出的可行性
         if (nativeCrashListener != null) {
             nativeCrashListener.onCrash(e);
         }
