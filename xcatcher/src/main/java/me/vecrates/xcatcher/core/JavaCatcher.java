@@ -25,27 +25,47 @@ public class JavaCatcher {
                 try {
                     Looper.loop();
                 } catch (Throwable e) {
-                    Log.e(TAG, "main thread:\n", e);
-                    if (onCrash(e)) {
-                        exitProcess();
+                    int handle = notifyListener(e);
+                    if (handle == CrashHandle.THROW) {
+                        throw e;
                     }
+                    if (handle == CrashHandle.EXIT) {
+                        Log.e(TAG, "main thread:\n", e);
+                        exitProcess();
+                        return;
+                    }
+                    Log.e(TAG, "main thread:\n", e);
                 }
             }
         });
     }
 
     private static void listenOtherThread() {
-        //Thread.UncaughtExceptionHandler oldHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.UncaughtExceptionHandler oldHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
-            Log.e(TAG, "other thread:\n", e);
-            if (onCrash(e)) {
-                exitProcess();
+            int handle = notifyListener(e);
+            if (handle == CrashHandle.THROW) {
+                if (oldHandler != null) {
+                    oldHandler.uncaughtException(t, e);
+                } else {
+                    throw new RuntimeException(e);
+                }
+                return;
             }
+            if (handle == CrashHandle.EXIT) {
+                Log.e(TAG, "other thread:\n", e);
+                exitProcess();
+                return;
+            }
+            Log.e(TAG, "other thread:\n", e);
         });
     }
 
-    private static boolean onCrash(Throwable throwable) {
-        return onCrashListener != null && onCrashListener.onCrash(throwable);
+    private static int notifyListener(Throwable throwable) {
+        if (onCrashListener == null) {
+            return CrashHandle.THROW;
+        }
+        return onCrashListener.onCrash(throwable);
     }
 
     private static void exitProcess() {

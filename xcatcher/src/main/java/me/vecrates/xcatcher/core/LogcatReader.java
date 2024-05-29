@@ -1,5 +1,6 @@
 package me.vecrates.xcatcher.core;
 
+import android.annotation.SuppressLint;
 import android.os.Process;
 import android.util.Log;
 
@@ -17,9 +18,10 @@ public class LogcatReader {
     private static final String TAG = LogcatReader.class.getSimpleName();
 
     @NonNull
-    public static String readLogcat() {
+    public static String readLogcat(int lineCount) {
         try {
-            String cmd = "logcat -t 100 --pid=" + Process.myPid();
+            @SuppressLint("DefaultLocale")
+            String cmd = String.format("logcat -t %d --pid=%d", lineCount, Process.myPid());
             java.lang.Process exec = Runtime.getRuntime().exec(cmd);
             InputStream is = exec.getInputStream();
             StringBuilder sb = new StringBuilder();
@@ -37,7 +39,6 @@ public class LogcatReader {
                     sb.setCharAt(i, ' ');
                 }
             }
-            Log.e(TAG, "readLogcat: " + sb);
             return sb.toString();
         } catch (IOException | Error e) {
             Log.e(TAG, "readLogcat: ", e);

@@ -1,6 +1,8 @@
 plugins {
-    alias(libs.plugins.androidLibrary)
+    id 'com.android.library'
 }
+
+apply from: 'maven_build.gradle'
 
 android {
     namespace 'me.vecrates.xcatcher'
@@ -12,7 +14,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles "consumer-rules.pro"
 
-        externalNativeBuild{
+        externalNativeBuild {
             cmake {
                 cppFlags "-frtti -fexceptions"
                 arguments "-DANDROID_ARM_NEON=TRUE"
@@ -23,9 +25,23 @@ android {
     }
 
     buildTypes {
+        debug {
+            minifyEnabled false
+            externalNativeBuild {
+                cmake {
+                    cppFlags "-DNDEBUG=0"
+                }
+            }
+        }
+
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            externalNativeBuild {
+                cmake {
+                    cppFlags "-DNDEBUG=1"
+                }
+            }
         }
     }
 
@@ -53,6 +69,6 @@ android {
 }
 
 dependencies {
-    implementation("io.hexhacking:xunwind:1.0.2")
+    implementation "io.hexhacking:xunwind:1.0.2"
     implementation 'androidx.annotation:annotation:1.1.0'
 }

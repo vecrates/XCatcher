@@ -1,0 +1,45 @@
+apply plugin: 'maven-publish'
+
+ext {
+    RESPO_PATH = "../repo"
+    PUBLISH_GROUP_ID = 'me.vecrates.xcatcher'//组id
+    PUBLISH_ARTIFACT_ID = 'xcatcher'//具体的项目id
+    PUBLISH_VERSION = '1.0.0-beta'//版本号
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.findByName("release")
+
+                // 必须有这个 否则不会上传AAR包
+                afterEvaluate { artifact(tasks.getByName("bundleReleaseAar")) }
+
+                groupId = project.PUBLISH_GROUP_ID
+                artifactId = project.PUBLISH_ARTIFACT_ID
+                version = project.PUBLISH_VERSION
+            }
+        }
+
+        repositories {
+            maven {
+                name("ReleaseMaven")
+                url = project.RESPO_PATH
+                //http需要 (https)
+                //allowInsecureProtocol true
+                /*credentials {
+                    username = ""
+                    password = ""
+                }*/
+            }
+        }
+    }
+}
+
+//生成sources保证aar可以查看源码
+task generateSourcesJar(type:Jar){
+    //这里gradle版本8以上有改动 需要用 archiveClassifier 而不是classifier
+    archiveClassifier = 'sources'
+    from android.sourceSets.main.java.srcDirs
+}

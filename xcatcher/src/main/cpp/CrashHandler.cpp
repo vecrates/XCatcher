@@ -5,11 +5,18 @@
 #include "android/log.h"
 #include "xunwind.h"
 #include <unistd.h>
+#include <fstream>
+#include <string>
 
-#define LOGI(FORMAT, ...) __android_log_print(ANDROID_LOG_ERROR,"CrashHandler",FORMAT,##__VA_ARGS__);
+#define LOGI(FORMAT, ...) if(!NDEBUG) __android_log_print(ANDROID_LOG_ERROR,"CrashHandler",FORMAT,##__VA_ARGS__);
 
-#define THREAD_NAME_LENGTH 120
-
+template<typename ... Args>
+std::string stringFormat(const std::string &format, Args ... args) {
+    size_t size = 1 + snprintf(nullptr, 0, format.c_str(), args ...);  // Extra space for \0
+    char bytes[size];
+    snprintf(bytes, size, format.c_str(), args ...);
+    return {bytes};
+}
 
 CrashHandler::CrashHandler(JavaVM *vm, JNIEnv *env, jobject jobj) {
     this->vm = vm;
@@ -18,7 +25,7 @@ CrashHandler::CrashHandler(JavaVM *vm, JNIEnv *env, jobject jobj) {
 
     jclass jclaz = env->GetObjectClass(jobj);
     this->jmethod = env->GetMethodID(jclaz, "onCrash",
-                                     "(Lme/vecrates/xcatcher/core/NativeCrash;)V");
+                                     "(Lme/vecrates/xcatcher/core/NativeCrash;)Z");
 
     this->crash_cls = static_cast<jclass>(env->NewGlobalRef(
             env->FindClass("me/vecrates/xcatcher/core/NativeCrash")));
@@ -27,113 +34,139 @@ CrashHandler::CrashHandler(JavaVM *vm, JNIEnv *env, jobject jobj) {
 
 }
 
-char *getThreadName(pid_t tid) {
+std::string getThreadName(pid_t tid) {
     if (tid <= 1) {
-        return NULL;
+        return "unknown";
     }
-    char *path = (char *) calloc(1, 100);
-    char *line = (char *) calloc(1, THREAD_NAME_LENGTH);
-
-    snprintf(path, PATH_MAX, "proc/%d/comm", tid);
-    FILE *commFile = fopen(path, "r");
-    if (commFile) {
-        fgets(line, THREAD_NAME_LENGTH, commFile);
-        fclose(commFile);
+    std::string path = stringFormat("proc/%d/comm", tid);
+    std::ifstream inFile(path, std::ios::in);
+    if (!inFile) {
+        return "unknown";
     }
-    free(path);
-    if (line) {
-        int length = strlen(line);
-        if (line[length - 1] == '\n') {
-            line[length - 1] = '\0';
-        }
-    }
+    std::string line;
+    std::getline(inFile, line);
+    inFile.close();
     return line;
 }
 
-char *getMessage(int signal, int code) {
+std::string getMessage(int signal, int code, int errorNo) {
+    std::string hint;
+
     switch (signal) {
         case SIGABRT:
-            return "abort";
+            hint = "abort";
+            break;
         case SIGBUS:
             switch (code) {
                 case BUS_ADRALN:
-                    return "Invalid address alignment";
+                    hint = "Invalid address alignment";
+                    break;
                 case BUS_ADRERR:
-                    return "Nonexistent physical address";
+                    hint = "Nonexistent physical address";
+                    break;
                 case BUS_OBJERR:
-                    return "Object-specific hardware error";
+                    hint = "Object-specific hardware error";
+                    break;
                 default:
-                    return "SIGBUS(unknown)";
+                    hint = "SIGBUS(unknown)";
+                    break;
             }
+            break;
         case SIGFPE:
             switch (code) {
                 case FPE_INTDIV:
-                    return "Integer divide by zero";
+                    hint = "Integer divide by zero";
+                    break;
                 case FPE_INTOVF:
-                    return "Integer overflow";
+                    hint = "Integer overflow";
+                    break;
                 case FPE_FLTDIV:
-                    return "Floating-point divide by zero";
+                    hint = "Floating-point divide by zero";
+                    break;
                 case FPE_FLTOVF:
-                    return "Floating-point overflow";
+                    hint = "Floating-point overflow";
+                    break;
                 case FPE_FLTUND:
-                    return "Floating-point underflow";
+                    hint = "Floating-point underflow";
+                    break;
                 case FPE_FLTRES:
-                    return "Floating-point inexact result";
+                    hint = "Floating-point inexact result";
+                    break;
                 case FPE_FLTINV:
-                    return "Invalid floating-point operation";
+                    hint = "Invalid floating-point operation";
+                    break;
                 case FPE_FLTSUB:
-                    return "Subscript out of range";
+                    hint = "Subscript out of range";
+                    break;
                 default:
-                    return "Floating-point";
+                    hint = "Floating-point";
+                    break;
             }
+            break;
         case SIGILL:
             switch (code) {
                 case ILL_ILLOPC:
-                    return "Illegal opcode";
+                    hint = "Illegal opcode";
+                    break;
                 case ILL_ILLOPN:
-                    return "Illegal operand";
+                    hint = "Illegal operand";
+                    break;
                 case ILL_ILLADR:
-                    return "Illegal addressing mode";
+                    hint = "Illegal addressing mode";
+                    break;
                 case ILL_ILLTRP:
-                    return "Illegal trap";
+                    hint = "Illegal trap";
+                    break;
                 case ILL_PRVOPC:
-                    return "Privileged opcode";
+                    hint = "Privileged opcode";
+                    break;
                 case ILL_PRVREG:
-                    return "Privileged register";
+                    hint = "Privileged register";
+                    break;
                 case ILL_COPROC:
-                    return "Coprocessor error";
+                    hint = "Coprocessor error";
+                    break;
                 case ILL_BADSTK:
-                    return "Internal stack error";
+                    hint = "Internal stack error";
+                    break;
                 default:
-                    return "SIGILL(unknown)";
+                    hint = "SIGILL(unknown)";
+                    break;
             }
+            break;
         case SIGSEGV:
             switch (code) {
                 case SEGV_MAPERR:
-                    return "Address not mapped to object";
+                    hint = "Address not mapped to object";
+                    break;
                 case SEGV_ACCERR:
-                    return "Invalid permissions for mapped object";
+                    hint = "Invalid permissions for mapped object";
+                    break;
                 default:
-                    return "Segmentation violation";
+                    hint = "Segmentation violation";
+                    break;
             }
+            break;
         default:
-            return "unknown";
+            hint = "<unknown>";
     }
+
+    std::string message = stringFormat("signal=%d,code=%d,errno=%d (%s)",
+                                       signal, code, errorNo, hint.c_str());
+    return message;
 }
 
 void CrashHandler::OnCrash() {
-
     JNIEnv *env;
     vm->AttachCurrentThread(&env, NULL);
 
-    char *thread_name = getThreadName(this->tid);
-    jstring thread_name_str = env->NewStringUTF(thread_name);
-    free(thread_name);
+    std::string threadName = getThreadName(this->tid);
+    jstring thread_name_str = env->NewStringUTF(threadName.c_str());
 
-    char *message = getMessage(this->si->si_signo, this->si->si_code);
-    jstring message_str = env->NewStringUTF(message);
+    std::string message = getMessage(this->si->si_signo, this->si->si_code, this->si->si_errno);
+    jstring message_str = env->NewStringUTF(message.c_str());
 
-    char *traces = xunwind_cfi_get(getpid(), gettid(), this->context, NULL);
+    char *traces = xunwind_cfi_get(this->pid, this->tid, this->context, NULL);
     jstring traces_str = env->NewStringUTF(traces);
 
     jfieldID jfi = env->GetFieldID(crash_cls, "threadName", "Ljava/lang/String;");
@@ -145,27 +178,42 @@ void CrashHandler::OnCrash() {
     jfi = env->GetFieldID(crash_cls, "stackTraces", "Ljava/lang/String;");
     env->SetObjectField(native_crash_obj, jfi, traces_str);
 
-    env->CallVoidMethod(this->jobj, this->jmethod, native_crash_obj); //
+    jboolean quitProcess = env->CallBooleanMethod(this->jobj, this->jmethod, native_crash_obj); //
+
+    //free(traces);
 
 //    env->DeleteGlobalRef(this->crash_cls);
 //    env->DeleteGlobalRef(this->native_crash_obj);
 //
-//    //部分手机产生 signal 11
+//    //部分手机产生 signal 11，后续处理都是结束进程，故不释放
 //    env->ReleaseStringUTFChars(thread_name_str, thread_name);
 //    env->ReleaseStringUTFChars(message_str, message);
 //    env->ReleaseStringUTFChars(traces_str, traces);
 
     vm->DetachCurrentThread();
 
-    quick_exit(0);
+    if (quitProcess) {
+        quick_exit(0);
+    }
+
 }
 
-void CrashHandler::NotifyCrash(pid_t pid, pid_t tid, siginfo_t *si, void *context) {
+bool CrashHandler::isCrashHandled() {
+    return crashHandled;
+}
+
+void CrashHandler::NotifyCrash(pid_t pid,
+                               pid_t tid,
+                               siginfo_t *si,
+                               void *context,
+                               std::condition_variable *locker) {
     this->crashed = true;
     this->pid = pid;
     this->tid = tid;
     this->si = si;
     this->context = context;
+    this->waitCrashHandledLocker = locker;
+    this->crashHandled = false;
     this->crash_cond.notify_one();
 }
 
@@ -175,7 +223,8 @@ void *CrashHandler::ThreadRunnable(void *data) {
     threadCrashHandler = (CrashHandler *) data;
 
     //等待 crash 发生
-    LOGI("crash handler >> ready");
+    LOGI("crash handler >>> ready");
+
     std::unique_lock<std::mutex> lk(threadCrashHandler->mut);
     threadCrashHandler->crash_cond.wait(lk, [] {
         return threadCrashHandler->crashed;
@@ -185,7 +234,12 @@ void *CrashHandler::ThreadRunnable(void *data) {
 
     lk.unlock();
 
-    LOGI("crash handler >> finish")
+    threadCrashHandler->crashHandled = true;
+    if (threadCrashHandler->waitCrashHandledLocker != nullptr) {
+        threadCrashHandler->waitCrashHandledLocker->notify_one();
+    }
+
+    LOGI("crash handler >>> finish");
 
     return 0;
 }
